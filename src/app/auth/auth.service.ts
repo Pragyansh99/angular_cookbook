@@ -57,8 +57,7 @@ export class AuthService {
         }
 
         const loadedUser = new User(user.email, user.id, user._token, new Date(user._tokenExpirationDate))
-
-        if(!loadedUser.token) {
+        if(loadedUser.token) {
             this.user.next(loadedUser);
         }
 
@@ -66,6 +65,7 @@ export class AuthService {
 
     logout() {
         this.user.next(null);
+        localStorage.removeItem('userData')
         this.router.navigate(['/auth']);
     }
 
