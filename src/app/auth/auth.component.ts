@@ -1,6 +1,8 @@
-import { Component } from "@angular/core";
+import { Component, ComponentFactoryResolver, OnDestroy, ViewChild } from "@angular/core";
 import { NgForm } from '@angular/forms';
-import { Observable } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
+import { AlertComponent } from "../shared/alert/alert.component";
+import { PlaceholderDirective } from "../shared/placeholder.directive";
 
 import { AuthService, AuthResponseData } from './auth.service';
 
@@ -8,12 +10,15 @@ import { AuthService, AuthResponseData } from './auth.service';
     selector: 'app-auth',
     templateUrl: './auth.component.html'
 })
-export class AuthComponent {
+export class AuthComponent implements OnDestroy {
     isLoginMode = true;
     isLoading = false;
     error : string = null
+    @ViewChild(PlaceholderDirective) alertHost : PlaceholderDirective;
 
-    constructor(private authService : AuthService) { }
+    private closeSub :Subscription
+
+    constructor(private authService : AuthService, private componentFactoryResolver: ComponentFactoryResolver) { }
 
     switchMode() {
         this.isLoginMode = !this.isLoginMode
@@ -36,10 +41,36 @@ export class AuthComponent {
             this.error = null
         }, errorMessage => {
             this.isLoading = false;
-            this.error = errorMessage;
+            // this.error = errorMessage;
+            this.showError(errorMessage)
         })
 
         form.reset();
+    }
+
+    onHandelError(){
+        this.error = null
+    }
+
+    private showError(errorMessage) {
+        const alertFactory = this.componentFactoryResolver.resolveComponentFactory(AlertComponent)
+        const hostViewContainerRef  = this.alertHost.viewContainerRef;
+        hostViewContainerRef.clear();
+
+        const componentRef = hostViewContainerRef.createComponent(alertFactory);
+        componentRef.instance.message = errorMessage
+        this.closeSub = componentRef.instance.close.subscribe(()=>{
+            this.closeSub.unsubscribe();
+            hostViewContainerRef.clear();
+        });
+    }
+
+    ngOnDestroy(): void {
+        //Called once, before the instance is destroyed.
+        //Add 'implements OnDestroy' to the class.
+       if(this.closeSub) {
+        this.closeSub.unsubscribe();
+       } 
     }
 
 }
