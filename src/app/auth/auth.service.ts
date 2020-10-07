@@ -1,12 +1,14 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Injectable } from "@angular/core";
+import { Injectable } from '@angular/core';
 import { catchError, tap } from 'rxjs/operators';
-import { BehaviorSubject, throwError } from 'rxjs'
+import { BehaviorSubject, throwError } from 'rxjs';
 import { Router } from '@angular/router';
 import { environment } from './../../environments/environment';
+import { Store } from '@ngrx/store';
 
 import { User } from './user.model';
-
+import * as fromApp from '../store/app.reducer';
+import * as AuthAction from './store/auth.actions';
 
 export interface AuthResponseData {
     idToken: string;
@@ -14,16 +16,16 @@ export interface AuthResponseData {
     refreshToken: string;
     expiresIn: string;
     localId: string;
-    registered?:boolean;
+    registered?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-    
-    API_KEY = environment.firebaseApiKey;
-    user  = new BehaviorSubject<User>(null);
 
-    constructor(private http: HttpClient, private router: Router) { }
+    API_KEY = environment.firebaseApiKey;
+    // user  = new BehaviorSubject<User>(null);
+
+    constructor(private http: HttpClient, private router: Router, private store: Store<fromApp.AppState>) { }
 
     signup(email: string, password: string) {
         return this.http.post<AuthResponseData>(
@@ -35,10 +37,10 @@ export class AuthService {
             })
             .pipe(catchError(this.handelError), tap(resData => {
                 this.handleAuthSuccess(resData.email, resData.localId, resData.idToken, +resData.expiresIn);
-            }))
+            }));
     }
 
-    login(email:string,password:string) {
+    login(email: string, password: string) {
         return this.http.post<AuthResponseData>(
             `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${this.API_KEY}`,
             {
@@ -49,50 +51,64 @@ export class AuthService {
             .pipe(catchError(this.handelError),
             tap(resData => {
                 this.handleAuthSuccess(resData.email, resData.localId, resData.idToken, +resData.expiresIn);
-            }))
+            }));
     }
 
-    autoLogin() { 
-        const user = JSON.parse(localStorage.getItem('userData'))
-        if(!user) {
+    autoLogin() {
+        const user = JSON.parse(localStorage.getItem('userData'));
+        if (!user) {
             return;
         }
 
-        const loadedUser = new User(user.email, user.id, user._token, new Date(user._tokenExpirationDate))
-        if(loadedUser.token) {
-            this.user.next(loadedUser);
+        const loadedUser = new User(user.email, user.id, user._token, new Date(user._tokenExpirationDate));
+        if (loadedUser.token) {
+            // this.user.next(loadedUser);
+            this.store.dispatch(new AuthAction.Login({
+              email: user.email,
+              userId: user.id,
+              token: user._token,
+              expirationDate: new Date(user._tokenExpirationDate)
+            })
+          );
         }
 
     }
 
     logout() {
-        this.user.next(null);
-        localStorage.removeItem('userData')
+        // this.user.next(null);
+        this.store.dispatch(new AuthAction.Logout());
+        localStorage.removeItem('userData');
         this.router.navigate(['/auth']);
     }
 
-    private handleAuthSuccess(email:string, userId:string, token:string, expiresIn: number) {
-        const expirationDate = new Date(new Date().getTime() + expiresIn * 1000 )
-        const user = new User(email, userId, token, expirationDate) 
-        this.user.next(user);
-        localStorage.setItem('userData',JSON.stringify(user))
-        this.router.navigate(['/recipes'])
+    private handleAuthSuccess(email: string, userId: string, token: string, expiresIn: number) {
+        const expirationDate = new Date(new Date().getTime() + expiresIn * 1000 );
+        const user = new User(email, userId, token, expirationDate);
+        this.store.dispatch(new AuthAction.Login({
+          email: email,
+          userId: userId,
+          token: token,
+          expirationDate: expirationDate
+        }));
+        // this.user.next(user);
+        localStorage.setItem('userData', JSON.stringify(user));
+        this.router.navigate(['/recipes']);
     }
 
     private handelError(errorRes: HttpErrorResponse) {
-        let errorMessage = 'An Error Occured'
-        if (!errorRes.error || !errorRes.error.error) { return throwError(errorMessage) }
+        let errorMessage = 'An Error Occured';
+        if (!errorRes.error || !errorRes.error.error) { return throwError(errorMessage); }
         switch (errorRes.error.error.message) {
             case 'EMAIL_EXISTS':
                 errorMessage = 'Email already in use!';
                 break;
-            case 'EMAIL_NOT_FOUND': 
+            case 'EMAIL_NOT_FOUND':
                 errorMessage = 'Email not registered!';
                 break;
-            case 'INVALID_PASSWORD': 
+            case 'INVALID_PASSWORD':
                 errorMessage = 'Invalid Credentials!';
                 break;
         }
-        return throwError(errorMessage)
+        return throwError(errorMessage);
     }
 }
